@@ -1,0 +1,6 @@
+# Seguridad extra para la carpeta de subidas:
+# aunque save-product.php ya valida el contenido con finfo,
+# se bloquea la ejecución de cualquier script por defensa en profundidad.
+<FilesMatch "\.(?i:php[0-9]?|phtml|phar|html?|inc|cgi|pl|py|asp|aspx|sh|bat)$">
+  Require all denied
+</FilesMatch>
