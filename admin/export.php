@@ -3,6 +3,18 @@ require_once __DIR__ . '/auth.php';
 require_login();
 require_once __DIR__ . '/../config/database.php';
 
+// Evitar que la configuración regional (es-CL) convierta 8990.5 en "8990,5"
+setlocale(LC_NUMERIC, 'C');
+
+// Previene "inyección de fórmulas" en Excel: si una celda empieza con = + - @
+// Excel la interpreta como fórmula; se antepone una comilla para neutralizarla.
+function csvCell($v): string {
+    if ($v !== '' && strpos('=+-@', $v[0]) !== false) {
+        return "'" . $v;
+    }
+    return $v;
+}
+
 $stmt = $pdo->query(
     "SELECT id, name, category, description, price, old_price, emoji, image, image_thumb, sort_order, active
      FROM products
@@ -12,6 +24,7 @@ $rows = $stmt->fetchAll();
 
 header('Content-Type: text/csv; charset=UTF-8');
 header('Content-Disposition: attachment; filename="productos_' . date('Ymd_His') . '.csv"');
+header('X-Content-Type-Options: nosniff');
 
 $out = fopen('php://output', 'w');
 
@@ -27,15 +40,15 @@ fputcsv($out, $header, ';');
 
 foreach ($rows as $r) {
     fputcsv($out, [
-        $r['id'],
-        $r['name'],
-        $r['category'],
-        $r['description'],
+        (int)$r['id'],
+        csvCell($r['name']),
+        csvCell($r['category']),
+        csvCell($r['description'] ?? ''),
         $r['price'],
         $r['old_price'] ?? '',
-        $r['emoji'] ?? '',
-        $r['image'] ?? '',
-        $r['image_thumb'] ?? '',
+        csvCell($r['emoji'] ?? ''),
+        csvCell($r['image'] ?? ''),
+        csvCell($r['image_thumb'] ?? ''),
         (int)$r['sort_order'],
         (int)$r['active'],
     ], ';');

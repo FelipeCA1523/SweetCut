@@ -22,6 +22,14 @@ $sort_order = (int)($_POST['sort_order'] ?? 0);
 $active = isset($_POST['active']) ? (int)$_POST['active'] : 1;
 $removeImage = isset($_POST['remove_image']) && $_POST['remove_image'] === '1';
 
+// Stock: vacío = ilimitado (NULL); 0 = agotado; N = quedan N. Solo enteros no negativos.
+$stockRaw = trim((string)($_POST['stock'] ?? ''));
+if ($stockRaw !== '' && !ctype_digit($stockRaw)) {
+    $_SESSION['error'] = 'El stock debe ser un número entero no negativo (o dejarlo vacío para ilimitado).';
+    redirectBack($id);
+}
+$stock = $stockRaw === '' ? null : (int)$stockRaw;
+
 // Categorías válidas desde la tabla categories (no confiar en valores hardcodeados)
 $stmtCats = $pdo->query("SELECT name FROM categories");
 $allowedCategories = $stmtCats->fetchAll(PDO::FETCH_COLUMN);
@@ -136,6 +144,18 @@ if (isset($_FILES['image']) && $_FILES['image']['error'] === UPLOAD_ERR_OK) {
         redirectBack($id);
     }
 
+    // Los SVG son texto: rechazar los que intenten ejecutar scripts/eventos (XSS)
+    if ($ext === 'svg') {
+        $svg = file_get_contents($file['tmp_name']);
+        if ($svg === false || preg_match(
+            '~<\s*(script|iframe|object|embed|foreignobject)|on(?:load|error|click|mouseover|focus|blur|submit|scroll|keyup|keydown|keypress)\s*=|javascript\s*:~i',
+            $svg
+        )) {
+            $_SESSION['error'] = 'El archivo SVG contiene contenido no permitido (scripts o eventos).';
+            redirectBack($id);
+        }
+    }
+
     $filename = 'prod_' . uniqid() . '.' . $ext;
     $destDir = __DIR__ . '/../assets/uploads/';
     $dest = $destDir . $filename;
@@ -182,18 +202,18 @@ try {
             "UPDATE products SET
                 name = ?, category = ?, description = ?, price = ?,
                 old_price = ?, emoji = ?, image = ?, image_thumb = ?,
-                sort_order = ?, active = ?
+                sort_order = ?, active = ?, stock = ?
              WHERE id = ?"
         );
-        $stmt->execute([$name, $category, $description, $price, $old_price, $emoji, $image, $imageThumb, $sort_order, $active, $id]);
+        $stmt->execute([$name, $category, $description, $price, $old_price, $emoji, $image, $imageThumb, $sort_order, $active, $stock, $id]);
         $_SESSION['flash'] = 'Producto actualizado correctamente.';
     } else {
         // Crear
         $stmt = $pdo->prepare(
-            "INSERT INTO products (name, category, description, price, old_price, emoji, image, image_thumb, sort_order, active)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)"
+            "INSERT INTO products (name, category, description, price, old_price, emoji, image, image_thumb, sort_order, active, stock)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)"
         );
-        $stmt->execute([$name, $category, $description, $price, $old_price, $emoji, $image, $imageThumb, $sort_order]);
+        $stmt->execute([$name, $category, $description, $price, $old_price, $emoji, $image, $imageThumb, $sort_order, $stock]);
         $_SESSION['flash'] = 'Producto creado correctamente.';
     }
 

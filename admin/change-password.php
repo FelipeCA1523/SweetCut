@@ -53,6 +53,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <div class="admin-logo">Sweet<span>Cut</span> <small>Admin</small></div>
     <div class="admin-user">
       <span>👋 <?= htmlspecialchars($_SESSION['admin_username']) ?></span>
+      <a href="index.php" class="link-light">Productos</a>
+      <a href="orders.php" class="link-light">Pedidos</a>
+      <a href="../index.html" class="link-light">Ver catálogo</a>
       <a href="logout.php" class="btn-logout">Salir</a>
     </div>
   </div>

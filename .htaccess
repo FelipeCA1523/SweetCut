@@ -1,2 +1,15 @@
 # Deshabilitar el listado de directorios
 Options -Indexes
+ServerSignature Off
+DirectoryIndex index.html index.php
+
+# Cabeceras de seguridad básicas para el sitio público
+<IfModule mod_headers.c>
+  Header set X-Content-Type-Options "nosniff"
+  Header set Referrer-Policy "same-origin"
+  Header set X-Frame-Options "DENY"
+  Header set Permissions-Policy "geolocation=(), microphone=(), camera=()"
+</IfModule>
+
+# Codificación por defecto
+AddDefaultCharset UTF-8

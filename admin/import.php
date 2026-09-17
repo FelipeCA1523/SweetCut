@@ -121,9 +121,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             } else {
                                 $ins = $pdo->prepare(
                                     "INSERT INTO products (name, category, description, price, old_price, emoji, sort_order, active)
-                                     VALUES (?, ?, ?, ?, ?, ?, ?, 1)"
+                                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
                                 );
-                                $ins->execute([$name, $category, $description, $price, $oldPrice, $emoji, $sortOrder]);
+                                $ins->execute([$name, $category, $description, $price, $oldPrice, $emoji, $sortOrder, $active]);
                                 $created++;
                             }
                         }

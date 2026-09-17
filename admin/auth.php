@@ -1,12 +1,21 @@
 <?php
 // Middleware de autenticación y seguridad para el panel de administración
 
-// Cookies de sesión endurecidas: no accesibles desde JS y protegidas contra CSRF entre sitios
+// Configuración previa de la sesión antes de iniciarla
+ini_set('session.use_strict_mode', '1'); // Rechaza ids de sesión no emitidas por el servidor
+ini_set('session.use_only_cookies', '1'); // No aceptar ids de sesión por URL
+ini_set('session.gc_maxlifetime', '3600'); // Coincide con SESSION_TIMEOUT (1 h)
 session_set_cookie_params([
     'httponly' => true,
     'samesite' => 'Lax',
+    'secure'   => isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== '' && $_SERVER['HTTPS'] !== 'off',
 ]);
 session_start();
+
+// Cabeceras de seguridad básicas (anti-clickjacking, anti-sniffing, referrer)
+header('X-Frame-Options: DENY');
+header('X-Content-Type-Options: nosniff');
+header('Referrer-Policy: same-origin');
 
 // Tiempo máximo de inactividad antes de cerrar sesión (en segundos): 1 hora
 const SESSION_TIMEOUT = 3600;

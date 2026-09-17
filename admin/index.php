@@ -2,6 +2,7 @@
 require_once __DIR__ . '/auth.php';
 require_login();
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/order-constants.php';
 
 // Filtro por categoría
 $cat = isset($_GET['cat']) ? $_GET['cat'] : '';
@@ -45,6 +46,59 @@ $products = $stmt->fetchAll();
 $totalProducts = (int)$pdo->query("SELECT COUNT(*) FROM products")->fetchColumn();
 $totalActive = (int)$pdo->query("SELECT COUNT(*) FROM products WHERE active = 1")->fetchColumn();
 
+// Pedidos nuevos (con tolerancia a instalaciones previas sin la tabla)
+$newOrders = 0;
+try {
+    $newOrders = (int)$pdo->query("SELECT COUNT(*) FROM orders WHERE status = 'nuevo'")->fetchColumn();
+} catch (PDOException $e) {
+    $newOrders = 0;
+}
+
+// Dashboard de ventas (tolerante a instalaciones sin la tabla de pedidos)
+$salesDays = [];
+$topProducts = [];
+$statusCounts = [];
+try {
+    $stmt = $pdo->prepare(
+        "SELECT DATE(created_at) AS d, COUNT(*) AS cnt, COALESCE(SUM(total), 0) AS t
+         FROM orders WHERE created_at >= ?
+         GROUP BY DATE(created_at)"
+    );
+    $stmt->execute([date('Y-m-d', strtotime('-6 days'))]);
+    foreach ($stmt->fetchAll() as $r) {
+        $salesDays[$r['d']] = ['cnt' => (int)$r['cnt'], 't' => (float)$r['t']];
+    }
+    $topProducts = $pdo->query(
+        "SELECT name, SUM(qty) AS qty, SUM(price * qty) AS total
+         FROM order_items GROUP BY name ORDER BY qty DESC, total DESC LIMIT 5"
+    )->fetchAll();
+    $statusCounts = $pdo->query("SELECT status, COUNT(*) AS cnt FROM orders GROUP BY status")->fetchAll();
+} catch (PDOException $e) {
+    // Sin tabla de pedidos (instalación previa a v2.3): dashboard vacío.
+}
+
+// Últimos 7 días (con ceros donde no hubo ventas)
+$dNames = ['Mon' => 'Lun', 'Tue' => 'Mar', 'Wed' => 'Mié', 'Thu' => 'Jue', 'Fri' => 'Vie', 'Sat' => 'Sáb', 'Sun' => 'Dom'];
+$days = [];
+for ($i = 6; $i >= 0; $i--) {
+    $d = date('Y-m-d', strtotime("-$i days"));
+    $en = date('D', strtotime($d));
+    $days[$d] = [
+        'label' => $dNames[$en] ?? $en,
+        'cnt'   => $salesDays[$d]['cnt'] ?? 0,
+        't'     => $salesDays[$d]['t'] ?? 0.0,
+    ];
+}
+$weekTotal = 0;
+$weekCount = 0;
+foreach ($days as $d) { $weekTotal += $d['t']; $weekCount += $d['cnt']; }
+$maxTotal = max(1, max(array_column($days, 't')));
+
+$cntByStatus = [];
+foreach ($statusCounts as $r) { $cntByStatus[$r['status']] = (int)$r['cnt']; }
+$maxQty = 1;
+foreach ($topProducts as $t) { $maxQty = max($maxQty, (int)$t['qty']); }
+
 // Base de la URL para la paginación (preserva el filtro de categoría)
 $baseUrl = 'index.php' . ($cat !== '' ? '?cat=' . urlencode($cat) . '&' : '?');
 ?>
@@ -63,6 +117,7 @@ $baseUrl = 'index.php' . ($cat !== '' ? '?cat=' . urlencode($cat) . '&' : '?');
     <div class="admin-logo">Sweet<span>Cut</span> <small>Admin</small></div>
     <div class="admin-user">
       <span>👋 <?= htmlspecialchars($_SESSION['admin_username']) ?></span>
+      <a href="orders.php" class="link-light">Pedidos</a>
       <a href="../index.html" class="link-light">Ver catálogo</a>
       <a href="change-password.php" class="link-light">Cambiar contraseña</a>
       <a href="logout.php" class="btn-logout">Salir</a>
@@ -87,6 +142,51 @@ $baseUrl = 'index.php' . ($cat !== '' ? '?cat=' . urlencode($cat) . '&' : '?');
       <div class="stat-card"><span class="stat-label">Total</span><span class="stat-value"><?= $totalProducts ?></span></div>
       <div class="stat-card"><span class="stat-label">Activos</span><span class="stat-value"><?= $totalActive ?></span></div>
       <div class="stat-card"><span class="stat-label">Categorías</span><span class="stat-value"><?= count($categories) ?></span></div>
+      <div class="stat-card"><span class="stat-label">Pedidos nuevos</span><span class="stat-value"><a href="orders.php?status=nuevo" class="stat-link"><?= $newOrders ?></a></span></div>
+    </div>
+
+    <div class="sales-grid">
+      <div class="sales-card">
+        <div class="sales-card-head">
+          <h2>Ventas últimos 7 días</h2>
+          <span class="sales-summary"><?= '$' . number_format($weekTotal, 0, ',', '.') ?> · <?= $weekCount ?> pedidos</span>
+        </div>
+        <div class="bar-chart" aria-label="Ventas por día de la última semana">
+          <?php foreach ($days as $d): ?>
+            <div class="bar-col" title="<?= htmlspecialchars($d['label']) ?>: <?= $d['cnt'] ?> pedido(s)">
+              <span class="bar-price"><?= $d['cnt'] > 0 ? '$' . number_format($d['t'], 0, ',', '.') : '' ?></span>
+              <div class="bar" style="height: <?= (int)round(($d['t'] / $maxTotal) * 100) ?>%"></div>
+              <span class="bar-label"><?= htmlspecialchars($d['label']) ?></span>
+            </div>
+          <?php endforeach; ?>
+        </div>
+      </div>
+
+      <div class="sales-card">
+        <h2>Top productos (cantidad)</h2>
+        <?php if (count($topProducts) === 0): ?>
+          <p class="muted">Sin ventas todavía.</p>
+        <?php else: ?>
+          <?php foreach ($topProducts as $t): ?>
+            <div class="hbar-row">
+              <span class="hbar-name" title="<?= htmlspecialchars($t['name']) ?>"><?= htmlspecialchars($t['name']) ?></span>
+              <div class="hbar-track"><div class="hbar-fill" style="width: <?= (int)round(((int)$t['qty'] / $maxQty) * 100) ?>%"></div></div>
+              <span class="hbar-qty"><?= (int)$t['qty'] ?> u</span>
+            </div>
+          <?php endforeach; ?>
+        <?php endif; ?>
+        <div class="status-legend">
+          <span class="legend-title">Pedidos por estado</span>
+          <div class="legend-items">
+            <?php foreach ($ORDER_STATUSES as $key => $label): ?>
+              <span class="legend-item">
+                <span class="status-pill status-<?= htmlspecialchars($key) ?>"><?= htmlspecialchars($label) ?></span>
+                <strong><?= $cntByStatus[$key] ?? 0 ?></strong>
+              </span>
+            <?php endforeach; ?>
+          </div>
+        </div>
+      </div>
     </div>
 
     <?php if (isset($_SESSION['flash'])): ?>
@@ -111,6 +211,7 @@ $baseUrl = 'index.php' . ($cat !== '' ? '?cat=' . urlencode($cat) . '&' : '?');
             <th>Producto</th>
             <th>Categoría</th>
             <th>Precio</th>
+            <th>Stock</th>
             <th>Orden</th>
             <th>Estado</th>
             <th>Acciones</th>
@@ -118,7 +219,7 @@ $baseUrl = 'index.php' . ($cat !== '' ? '?cat=' . urlencode($cat) . '&' : '?');
         </thead>
         <tbody>
           <?php if (count($products) === 0): ?>
-            <tr><td colspan="7" class="empty-cell">No hay productos en esta vista. Haz clic en "Nuevo producto".</td></tr>
+            <tr><td colspan="8" class="empty-cell">No hay productos en esta vista. Haz clic en "Nuevo producto".</td></tr>
           <?php endif; ?>
           <?php foreach ($products as $p): ?>
             <tr>
@@ -137,6 +238,17 @@ $baseUrl = 'index.php' . ($cat !== '' ? '?cat=' . urlencode($cat) . '&' : '?');
               <td>
                 <?= '$' . number_format($p['price'], 0, ',', '.') ?> CLP
                 <?php if ($p['old_price']): ?><br><small class="muted old-price"><?= '$' . number_format($p['old_price'], 0, ',', '.') ?> CLP</small><?php endif; ?>
+              </td>
+              <td>
+                <?php if ($p['stock'] === null): ?>
+                  <span class="pill pill-stock-unlimited">Ilimitado</span>
+                <?php elseif ((int)$p['stock'] === 0): ?>
+                  <span class="pill pill-stock-none">Agotado</span>
+                <?php elseif ((int)$p['stock'] <= 5): ?>
+                  <span class="pill pill-stock-low">Quedan <?= (int)$p['stock'] ?></span>
+                <?php else: ?>
+                  <span class="pill pill-stock-ok"><?= (int)$p['stock'] ?> u.</span>
+                <?php endif; ?>
               </td>
               <td><span class="muted"><?= (int)$p['sort_order'] ?></span></td>
               <td>

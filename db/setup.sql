@@ -17,7 +17,8 @@ CREATE TABLE IF NOT EXISTS categories (
   name VARCHAR(50) UNIQUE NOT NULL,
   label VARCHAR(50) NOT NULL,
   emoji VARCHAR(10) DEFAULT NULL,
-  sort_order INT DEFAULT 0
+  sort_order INT DEFAULT 0,
+  INDEX idx_cat_sort (sort_order, name)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 INSERT IGNORE INTO categories (name, label, emoji, sort_order) VALUES
@@ -41,7 +42,9 @@ CREATE TABLE IF NOT EXISTS products (
   image_thumb VARCHAR(255) DEFAULT NULL,
   sort_order INT DEFAULT 0,
   active TINYINT(1) DEFAULT 1,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  stock INT DEFAULT NULL, -- NULL = ilimitado; 0 = agotado; N = quedan N
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_prod_cat_active (category, active)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ------------------------------------------------------------
@@ -74,3 +77,50 @@ INSERT INTO products (name, category, description, price, old_price, emoji, imag
 ('Rosa Vintage', 'elegante', 'Rosa abierta con pétalos en capas.', 8990, NULL, '🌹', 'assets/images/rosa-vintage.svg', 2),
 ('Osito Polar', 'animales', 'Osito polar con forma redondeada y adorable.', 9990, NULL, '🐻‍❄️', 'assets/images/osito-polar.svg', 4),
 ('Campana Navideña', 'navidad', 'Campana con moño detallado para la temporada.', 7490, NULL, '🔔', 'assets/images/campana-navidena.svg', 4);
+
+-- ------------------------------------------------------------
+-- Tabla de pedidos (sin pasarela de pago ni boleta)
+-- El pago se coordina por WhatsApp (efectivo / transferencia / contra entrega)
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS orders (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  order_no VARCHAR(20) UNIQUE NOT NULL,
+  customer_name VARCHAR(100) NOT NULL,
+  customer_phone VARCHAR(20) NOT NULL,
+  customer_email VARCHAR(100) DEFAULT NULL,
+  region VARCHAR(80) NOT NULL,
+  commune VARCHAR(80) NOT NULL,
+  address VARCHAR(255) DEFAULT NULL,
+  delivery_type ENUM('pickup','delivery') NOT NULL DEFAULT 'pickup',
+  payment_method ENUM('efectivo','transferencia','contra_entrega') NOT NULL DEFAULT 'transferencia',
+  notes TEXT,
+  total DECIMAL(12,2) NOT NULL,
+  status ENUM('nuevo','confirmado','en_preparacion','listo_retiro','despachado','entregado','cancelado') NOT NULL DEFAULT 'nuevo',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_orders_status (status),
+  INDEX idx_orders_created (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ------------------------------------------------------------
+-- Ítems de cada pedido (snapshot del producto al ordenar)
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS order_items (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  order_id INT NOT NULL,
+  product_id INT DEFAULT NULL,
+  name VARCHAR(100) NOT NULL,
+  price DECIMAL(12,2) NOT NULL,
+  image VARCHAR(255) DEFAULT NULL,
+  qty INT NOT NULL DEFAULT 1,
+  INDEX idx_order (order_id),
+  CONSTRAINT fk_order_items_order FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ------------------------------------------------------------
+-- Tabla anti-spam: registra pedidos por IP (límite por tiempo)
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS order_rate (
+  ip VARCHAR(45) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_ip_time (ip, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

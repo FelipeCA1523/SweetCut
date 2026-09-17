@@ -34,6 +34,10 @@ $categories = $pdo->query("SELECT name, label, emoji FROM categories ORDER BY so
     <div class="admin-logo">Sweet<span>Cut</span> <small>Admin</small></div>
     <div class="admin-user">
       <span>👋 <?= htmlspecialchars($_SESSION['admin_username']) ?></span>
+      <a href="index.php" class="link-light">Productos</a>
+      <a href="orders.php" class="link-light">Pedidos</a>
+      <a href="change-password.php" class="link-light">Cambiar contraseña</a>
+      <a href="../index.html" class="link-light">Ver catálogo</a>
       <a href="logout.php" class="btn-logout">Salir</a>
     </div>
   </div>
@@ -97,6 +101,12 @@ $categories = $pdo->query("SELECT name, label, emoji FROM categories ORDER BY so
             <label for="sort_order">Orden manual (menor = primero)</label>
             <input type="number" id="sort_order" name="sort_order" step="1" value="<?= (int)($product['sort_order'] ?? 0) ?>">
             <small class="hint">Menor = primero en el catálogo.</small>
+          </div>
+
+          <div class="form-group">
+            <label for="stock">Stock disponible (opcional)</label>
+            <input type="number" id="stock" name="stock" min="0" step="1" placeholder="Vacío = ilimitado" value="<?= isset($product['stock']) && $product['stock'] !== null ? (int)$product['stock'] : '' ?>">
+            <small class="hint">Unidades para vender. <strong>Vacío = ilimitado</strong> (se hace bajo pedido); <strong>0 = agotado</strong>. Se descuenta solo al colocar un pedido.</small>
           </div>
 
           <div class="form-group">

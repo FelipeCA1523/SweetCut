@@ -7,6 +7,9 @@ assets/uploads/*
 config/.env
 *.env.local
 
+# --- Config local del catálogo (número de WhatsApp real NO se sube) ---
+js/config.local.js
+
 # --- Composer / dependencias PHP (si algún día se usa) ---
 /vendor/
 composer.lock

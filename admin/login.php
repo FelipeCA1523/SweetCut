@@ -12,8 +12,14 @@ $error = '';
 $username = '';
 $expired = isset($_GET['expired']);
 
+// Protección básica contra fuerza bruta (por sesión)
+$attempts = (int)($_SESSION['login_attempts'] ?? 0);
+$lockUntil = (int)($_SESSION['login_lock_until'] ?? 0);
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (!csrf_verify()) {
+    if (time() < $lockUntil) {
+        $error = 'Demasiados intentos fallidos. Vuelve a intentarlo en unos segundos.';
+    } elseif (!csrf_verify()) {
         $error = 'La solicitud expiró. Intenta de nuevo.';
     } else {
         $username = trim($_POST['username'] ?? '');
@@ -27,6 +33,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $admin = $stmt->fetch();
 
             if ($admin && password_verify($password, $admin['password'])) {
+                unset($_SESSION['login_attempts'], $_SESSION['login_lock_until']);
                 session_regenerate_id(true);
                 $_SESSION['admin_id'] = $admin['id'];
                 $_SESSION['admin_username'] = $admin['username'];
@@ -34,6 +41,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 header('Location: index.php');
                 exit;
             } else {
+                $_SESSION['login_attempts'] = $attempts + 1;
+                if ($attempts + 1 >= 5) {
+                    $_SESSION['login_lock_until'] = time() + min(30 * ($attempts + 1 - 4), 300);
+                }
                 $error = 'Usuario o contraseña incorrectos.';
             }
         }
@@ -53,8 +64,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   <div class="login-card">
     <div class="login-logo">Sweet<span>Cut</span> <small>Admin</small></div>
     <h1>Bienvenido</h1>
-    <p class="login-sub">Inicia sesión para administrar el catálogo.</p>E
-
+    <p class="login-sub">Inicia sesión para administrar el catálogo.</p>
     <?php if ($error): ?>
       <div class="alert alert-error"><?= htmlspecialchars($error) ?></div>
     <?php endif; ?>
